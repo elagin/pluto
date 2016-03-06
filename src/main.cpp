@@ -29,8 +29,7 @@ static string GEOSERVER_DB = "dbname=*** user=*** password=*** host=***";
 
 static string SRS = "4326";
 
-bool lastUpdate(int blockId, string date)
-{
+bool lastUpdate(int blockId, string date) {
 	cout << "-= lastUpdate =-" << endl;
 	try{
 		session sql(postgresql, GEOSERVER_DB);
@@ -49,8 +48,7 @@ bool lastUpdate(int blockId, string date)
 	return false;
 }
 
-bool toLines(int blockId, TrackList& trackList)
-{
+bool toLines(int blockId, TrackList& trackList) {
 	cout << "-= toLines =-" << endl;
 	try{
 		session sql(postgresql, GEOSERVER_DB);
@@ -69,6 +67,7 @@ bool toLines(int blockId, TrackList& trackList)
 		Track last = trackList.back();
 		string sqlLine = "INSERT INTO lines(block_id, date, shape) values(:blockid, :date ," + ss.str() + ")";
 		statement st = (sql.prepare << sqlLine, use(blockId, "blockid"), use(last.when, "date"));
+		st.execute(true);
 		return lastUpdate(blockId, last.when);
 	} catch (exception& e) {
 		cout << "toLines exception: " << e.what();
@@ -76,8 +75,7 @@ bool toLines(int blockId, TrackList& trackList)
 	return false;
 }
 
-void toPoints(int blockId, TrackList &trackList)
-{
+void toPoints(int blockId, TrackList &trackList) {
 	cout << "-= toPoints =-" << endl;
 	try{
 		session sql(postgresql, GEOSERVER_DB);
@@ -103,24 +101,40 @@ time_t convertTime(string time) {
 	return mktime(&tm);
 }
 
-string getTail()
-{
-	cout << "-= getTail =-" << endl;
-	int block_id = 187156;
+string getLastData(int block_id) {
+	cout << "-= getLastData =-" << endl;
+	try{
+		session sql(postgresql, GEOSERVER_DB);
+		string select = "SELECT date FROM last_update WHERE block_id = :blockid";
+		string date;
+		statement st = (sql.prepare << select, use(block_id, "blockid"), into(date));
+		if( st.execute(true) ) {
+			cout << "getLastData: old date is: " << date << endl;
+			return date;
+		} else {
+			cout << "getLastData: No data for blockid: " << block_id << endl;
+		}
+	} catch (exception& e) {
+		cout << "getLastData exception: " << e.what();
+	}
+	return "";
+}
+
+string getTail(int block_id, string date) {
+	cout << "-= getTail block_id: " << block_id << " date: " << date << endl;
 	string res;
-	string sqlReq = "SELECT top 10 lat, lon, received_date FROM journal_mon_201404142011.mld_message WHERE block_id = :block ORDER BY received_date";
+	string sqlReq = "SELECT top 1000 lat, lon, received_date FROM journal_mon_201404142011.mld_message WHERE block_id = :blockid AND received_date > :date ORDER BY received_date";
 
 	try{
 		session sql(odbc, SOURCE_DB);
 		TrackList trackList;
 		row rowData;
-		statement st = (sql.prepare << sqlReq, use(block_id), into(rowData));
+		statement st = (sql.prepare << sqlReq, use(block_id, "blockid"), use(date, "date"), into(rowData));
 		if( st.execute(true) ) {
 			Track track;
 			track.blockId = block_id;
 			track.lat = rowData.get<double>(0);
 			track.lon = rowData.get<double>(1);
-			//track.when = convertTime(rowData.get<std::string>(2));
 			track.when = rowData.get<std::string>(2);
 			trackList.push_back(track);
 			while (st.fetch()){
@@ -128,7 +142,6 @@ string getTail()
 				track.blockId = block_id;
 				track.lat = rowData.get<double>(0);
 				track.lon = rowData.get<double>(1);
-				//track.when = convertTime(rowData.get<std::string>(2));
 				track.when = rowData.get<std::string>(2);
 				trackList.push_back(track);
 			}
@@ -154,6 +167,8 @@ string getTail()
 
 
 int main(int argc, char const* argv[]) {
-	getTail();
+	int block_id = 187156;
+	string date = getLastData(block_id);
+	getTail(block_id, date);
 	return (EXIT_SUCCESS);
 }
