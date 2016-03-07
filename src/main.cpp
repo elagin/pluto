@@ -96,17 +96,31 @@ void toPoints(int blockId, TrackList &trackList) {
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
 		session sql(postgresql, GEOSERVER_DB);
+		string insertSql = "INSERT INTO points(block_id, date, shape) VALUES ";
+		std::stringstream values;
 		for (TrackList::iterator it=trackList.begin(); it != trackList.end(); ++it) {
 			std::stringstream ss;
+			ss << "( " << blockId << ", '" << it->when << "', ";
 			ss << "ST_GeomFromText('POINT(";
 			ss << it->lon;
 			ss << " ";
 			ss << it->lat;
 			ss << ")', " + SRS + ")";
-			string sqlLine = "INSERT INTO points(block_id, date, shape) values(:blockid, :date ," + ss.str() + ")";
-			statement st = (sql.prepare << sqlLine, use(blockId, "blockid"), use(it->when, "date"));
-			st.execute(true);
+			if(values.str().size() != 0) {
+				values << ", ";
+			}
+			values << ss.str();
+			values << " )";
+//			string insertSql = "INSERT INTO points(block_id, date, shape) values(:blockid, :date ," + ss.str() + ")";
+//			statement st = (sql.prepare << insertSql, use(blockId, "blockid"), use(it->when, "date"));
+//			st.execute(true);
 		}
+		//cout << insertSql << values.str();
+
+		statement st = (sql.prepare << insertSql << values.str());
+		st.execute(true);
+		cout << "toPoints affected_rows: " << st.get_affected_rows() << endl;
+
 		high_resolution_clock::time_point endTime = high_resolution_clock::now();
 		auto duration = duration_cast<milliseconds>( endTime - startTime ).count();
 		cout << "toPoints execution-time is: ";
