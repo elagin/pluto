@@ -7,6 +7,7 @@
 #include <list>
 #include <ctime>
 #include <chrono>
+#include <set>
 
 #include <soci/soci.h>
 #include <soci-postgresql.h>
@@ -16,15 +17,59 @@ using namespace std;
 using namespace soci;
 using namespace std::chrono;
 
-struct Track {
+time_t convertTime(string time) {
+	struct tm tm;
+	strptime(time.c_str(), "%F %T", &tm);
+	return mktime(&tm);
+}
+
+string convertTime(time_t time) {
+	char buff[20];
+	//time_t now = time(NULL);
+	//strftime(buff, 20, "%Y-%m-%d %H:%M:%S", localtime(&time));
+	strftime(buff, 20, "%F %T", localtime(&time));
+	string res = buff;
+	return res;
+}
+
+class Track {
+private:
 	int blockId;
 	double lat;
 	double lon;
-	string when;
-	//time_t when;
+	time_t when;
+
+public:
+	Track(int blockId, double lat, double lon, string when)
+		: blockId(blockId), lat(lat), lon(lon){
+		this->when = convertTime(when);
+	}
+
+	int getBlockId() const {
+		return blockId;
+	}
+
+	double getLat() const {
+		return lat;
+	}
+	double getLon() const {
+		return lon;
+	}
+
+	string getWhen() const {
+		return convertTime(this->when);
+	}
+
+	bool operator < (const Track &point) const {
+		return (this->lat < point.lat || this->lon < point.lon) && this->when < point.when; //убирает лишние, но оставляет только меньшее время.
+	}
+
+	void toString() const {
+		cout << blockId << " " << lat << " " << lon << " " << convertTime(when) << endl;
+	}
 };
 
-typedef std::list<Track> TrackList;
+typedef std::set<Track> TrackList;
 
 static string SOURCE_DB = "DSN=***;UID=***;PWD=***;database=***";
 static string GEOSERVER_DB = "dbname=*** user=*** password=*** host=***";
@@ -40,7 +85,7 @@ void showTime(int x) {
 	printf (" %02d:%02d:%02d.%d (%d)\n", hour, min, sec, (int)msec, x);
 }
 
-bool lastUpdate(int blockId, string date) {
+bool toLastUpdate(int blockId, string date) {
 	cout << "-= lastUpdate =-" << endl;
 	try{
 		session sql(postgresql, GEOSERVER_DB);
@@ -59,7 +104,7 @@ bool lastUpdate(int blockId, string date) {
 	return false;
 }
 
-bool toLines(int blockId, TrackList& trackList) {
+bool toLines(int blockId, TrackList& trackList, string lastWhen) {
 	cout << "-= toLines =-" << endl;
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
@@ -70,28 +115,28 @@ bool toLines(int blockId, TrackList& trackList) {
 		for (TrackList::iterator it=trackList.begin(); it != trackList.end(); ++it) {
 			if(lines.str().length() > 0) //Todo: Optimize me
 				lines << ", ";
-			lines << it->lon;
+			lines << it->getLon();
 			lines << " ";
-			lines << it->lat;
+			lines << it->getLat();
 		}
 		ss << lines.str();
 		ss << ")', 4326)";
-		Track last = trackList.back();
+
 		string sqlLine = "INSERT INTO lines(block_id, date, shape) values(:blockid, :date ," + ss.str() + ")";
-		statement st = (sql.prepare << sqlLine, use(blockId, "blockid"), use(last.when, "date"));
+		statement st = (sql.prepare << sqlLine, use(blockId, "blockid"), use(lastWhen, "date"));
 		st.execute(true);
 		high_resolution_clock::time_point endTime = high_resolution_clock::now();
 		auto duration = duration_cast<milliseconds>( endTime - startTime ).count();
 		cout << "toLines execution-time is: ";
 		showTime(duration);
-		return lastUpdate(blockId, last.when);
+		return st.get_affected_rows() > 0;
 	} catch (exception& e) {
 		cout << "toLines exception: " << e.what();
 	}
 	return false;
 }
 
-void toPoints(int blockId, TrackList &trackList) {
+bool toPoints(int blockId, TrackList &trackList) {
 	cout << "-= toPoints =-" << endl;
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
@@ -100,11 +145,11 @@ void toPoints(int blockId, TrackList &trackList) {
 		std::stringstream values;
 		for (TrackList::iterator it=trackList.begin(); it != trackList.end(); ++it) {
 			std::stringstream ss;
-			ss << "( " << blockId << ", '" << it->when << "', ";
+			ss << "( " << blockId << ", '" << it->getWhen() << "', ";
 			ss << "ST_GeomFromText('POINT(";
-			ss << it->lon;
+			ss << it->getLon();
 			ss << " ";
-			ss << it->lat;
+			ss << it->getLat();
 			ss << ")', " + SRS + ")";
 			if(values.str().size() != 0) {
 				values << ", ";
@@ -116,24 +161,18 @@ void toPoints(int blockId, TrackList &trackList) {
 //			st.execute(true);
 		}
 		//cout << insertSql << values.str();
-
 		statement st = (sql.prepare << insertSql << values.str());
 		st.execute(true);
 		cout << "toPoints affected_rows: " << st.get_affected_rows() << endl;
-
 		high_resolution_clock::time_point endTime = high_resolution_clock::now();
 		auto duration = duration_cast<milliseconds>( endTime - startTime ).count();
 		cout << "toPoints execution-time is: ";
 		showTime(duration);
+		return st.get_affected_rows() > 0;
 	} catch (exception& e) {
 		cout << "toPoints exception: " << e.what();
 	}
-}
-
-time_t convertTime(string time) {
-	struct tm tm;
-	strptime(time.c_str(), "%F %T", &tm);
-	return mktime(&tm);
+	return false;
 }
 
 string getLastData(int block_id) {
@@ -155,9 +194,8 @@ string getLastData(int block_id) {
 	return "";
 }
 
-string getTail(int block_id, string date) {
+void getTail(int block_id, string date) {
 	cout << "-= getTail block_id: " << block_id << " date: " << date << endl;
-	string res;
 	string sqlReq = "SELECT top 1000 lat, lon, received_date FROM journal_mon_201404142011.mld_message WHERE block_id = :blockid AND received_date > :date ORDER BY received_date";
 
 	try{
@@ -165,30 +203,34 @@ string getTail(int block_id, string date) {
 		session sql(odbc, SOURCE_DB);
 		TrackList trackList;
 		row rowData;
+		string lastWhen = "";
+		high_resolution_clock::time_point startRequestTime = high_resolution_clock::now();
 		statement st = (sql.prepare << sqlReq, use(block_id, "blockid"), use(date, "date"), into(rowData));
+		int totalRows = 0;
 		if( st.execute(true) ) {
-			Track track;
-			track.blockId = block_id;
-			track.lat = rowData.get<double>(0);
-			track.lon = rowData.get<double>(1);
-			track.when = rowData.get<std::string>(2);
-			trackList.push_back(track);
+			high_resolution_clock::time_point stopRequestTime = high_resolution_clock::now();
+			auto mssqlDuration = duration_cast<milliseconds>( stopRequestTime - startRequestTime ).count();
+			cout << "MSSQL execution-time is: ";
+			showTime(mssqlDuration);
+			lastWhen = rowData.get<std::string>(2);
+			Track track(block_id, rowData.get<double>(0), rowData.get<double>(1), lastWhen);
+			trackList.insert(track);
+			totalRows++;
 			while (st.fetch()){
-				Track track;
-				track.blockId = block_id;
-				track.lat = rowData.get<double>(0);
-				track.lon = rowData.get<double>(1);
-				track.when = rowData.get<std::string>(2);
-				trackList.push_back(track);
+				lastWhen = rowData.get<std::string>(2);
+				Track track(block_id, rowData.get<double>(0), rowData.get<double>(1), lastWhen);
+				trackList.insert(track);
+				totalRows++;
 			}
-			cout << "----== Size: " << trackList.size() << endl;
-			toPoints(block_id, trackList);
-			toLines(block_id, trackList);
-			cout << res << endl;
+			cout << "Size to insert: " << trackList.size() << " diference: " << (totalRows - trackList.size()) << endl;
+			if(toPoints(block_id, trackList))
+				if(toLines(block_id, trackList, lastWhen))
+					toLastUpdate(block_id, lastWhen);
 			high_resolution_clock::time_point endTime = high_resolution_clock::now();
 			auto duration = duration_cast<milliseconds>( endTime - startTime ).count();
 			cout << "getTail execution-time is: ";
 			showTime(duration);
+			cout << "Next date is: " << lastWhen << endl;
 		} else {
 			cout << "No data for blockid: " << block_id << endl;
 		}
@@ -200,9 +242,7 @@ string getTail(int block_id, string date) {
 		//)', 4326) );
 	} catch (exception& e) {
 		cout << e.what();
-		return e.what();
 	}
-	return res;
 }
 
 void getTime() {
@@ -217,7 +257,6 @@ void getTime() {
 	std::string str(buffer);
 	std::cout << str << endl;
 }
-
 
 int main(int argc, char const* argv[]) {
 	int block_id = 187156;
