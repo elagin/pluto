@@ -59,10 +59,13 @@ public:
 
 typedef std::set<Track> TrackList;
 
-static string SOURCE_DB = "DSN=***;UID=***;PWD=***;database=***";
-static string GEOSERVER_DB = "dbname=*** user=*** password=*** host=***";
+static const string SOURCE_DB = "DSN=***;UID=***;PWD=***;database=***";
+static const string GEOSERVER_DB = "dbname=*** user=*** password=*** host=***";
 
-static string SRS = "4326";
+static const string TOP_LINES = "100000"; // SELECT TOP
+static const string SRS = "4326";
+
+static const int MAX_POINTS_DIST = 20000; //Максимальное расстояние между точками для отреза линии.
 
 void checkDist(TrackList &trackList) {
 	Track prev;
@@ -137,7 +140,6 @@ bool toLines(int blockId, TrackList& trackList, string lastWhen) {
 }
 
 list<string> getLines(TrackList& trackList) {
-	static int maxDist = 800; //Максимальное расстояние между точками для отреза линии.
 	list<string> lines;
 	stringstream line;
 	Track prev;
@@ -152,7 +154,7 @@ list<string> getLines(TrackList& trackList) {
 			points++;
 		} else {
 			double dist = Tools::calcDist(prev.getLat(), prev.getLon(), it->getLat(), it->getLon());
-			if(dist <= maxDist) {
+			if(dist <= MAX_POINTS_DIST) {
 				// продолжаем линию
 				line << ", ";
 				line << it->getLon();
@@ -161,7 +163,7 @@ list<string> getLines(TrackList& trackList) {
 				points++;
 			} else {
 				//отрезаем линию
-				cout << "Points into line is: " << points << endl;
+				//cout << "Points into line is: " << points << endl;
 				if(points > 1)
 					lines.push_back(line.str());
 				line.str("");
@@ -268,7 +270,7 @@ string getLastData(int block_id) {
 
 void getTail(int block_id, string date) {
 	cout << "-= getTail block_id: " << block_id << " date: " << date << endl;
-	string sqlReq = "SELECT top 1000 lat, lon, received_date FROM journal_mon_201404142011.mld_message WHERE block_id = :blockid AND received_date > :date ORDER BY received_date";
+	string sqlReq = "SELECT top " + TOP_LINES + " lat, lon, received_date FROM journal_mon_201404142011.mld_message WHERE block_id = :blockid AND received_date > :date ORDER BY received_date";
 
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
