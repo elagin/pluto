@@ -19,6 +19,12 @@ using namespace std;
 using namespace soci;
 using namespace std::chrono;
 
+static const string SOURCE_DB = "DSN=***;UID=***;PWD=***;database=***";
+static const string GEOSERVER_DB = "dbname=*** user=*** password=*** host=***";
+static const string TOP_LINES = "100"; // SELECT TOP
+static const string SRS = "4326";
+static const string TABLE_POSTFIX = "_200";
+
 class Track {
 private:
 	int blockId = 0;
@@ -59,12 +65,6 @@ public:
 
 typedef std::set<Track> TrackList;
 
-static const string SOURCE_DB = "DSN=***;UID=***;PWD=***;database=***";
-static const string GEOSERVER_DB = "dbname=*** user=*** password=*** host=***";
-
-static const string TOP_LINES = "100000"; // SELECT TOP
-static const string SRS = "4326";
-
 static const int MAX_POINTS_DIST = 20000; //Максимальное расстояние между точками для отреза линии.
 
 void checkDist(TrackList &trackList) {
@@ -92,11 +92,11 @@ bool toLastUpdate(int blockId, string date) {
 	cout << "-= lastUpdate =-" << endl;
 	try{
 		session sql(postgresql, GEOSERVER_DB);
-		string update = "UPDATE last_update SET date = :date WHERE block_id = :blockid";
+		string update = "UPDATE last_update" + TABLE_POSTFIX + " SET date = :date WHERE block_id = :blockid";
 		statement stUpdate = (sql.prepare << update, use(date, "date"), use(blockId, "blockid"));
 		stUpdate.execute(true);
 		if(stUpdate.get_affected_rows() == 0 ) {
-			string insert = "INSERT INTO last_update(date, block_id) values(:date, :blockid)";
+			string insert = "INSERT INTO last_update" + TABLE_POSTFIX + "(date, block_id) values(:date, :blockid)";
 			statement stInsert = (sql.prepare << insert, use(date, "date"), use(blockId, "blockid"));
 			stInsert.execute(true);
 			return stInsert.get_affected_rows() > 0;
@@ -125,7 +125,7 @@ bool toLines(int blockId, TrackList& trackList, string lastWhen) {
 		ss << lines.str();
 		ss << ")', 4326)";
 
-		string sqlLine = "INSERT INTO lines(block_id, date, shape) values(:blockid, :date ," + ss.str() + ")";
+		string sqlLine = "INSERT INTO lines" + TABLE_POSTFIX + "(block_id, date, shape) values(:blockid, :date ," + ss.str() + ")";
 		statement st = (sql.prepare << sqlLine, use(blockId, "blockid"), use(lastWhen, "date"));
 		st.execute(true);
 		high_resolution_clock::time_point endTime = high_resolution_clock::now();
@@ -150,7 +150,6 @@ list<string> getLines(TrackList& trackList) {
 			line << it->getLon();
 			line << " ";
 			line << it->getLat();
-			prev = *it;
 			points++;
 		} else {
 			double dist = Tools::calcDist(prev.getLat(), prev.getLon(), it->getLat(), it->getLon());
@@ -170,6 +169,7 @@ list<string> getLines(TrackList& trackList) {
 				points = 0;
 			}
 		}
+		prev = *it;
 	}
 	if(line.str().length() > 0) {
 		//cout << "Points into line is: " << items << endl;
@@ -184,7 +184,7 @@ bool toCutLines(int blockId, TrackList& trackList, string lastWhen) {
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
 		session sql(postgresql, GEOSERVER_DB);
-		string sqlLine = "INSERT INTO lines(block_id, date, shape) VALUES ";
+		string sqlLine = "INSERT INTO lines" + TABLE_POSTFIX + "(block_id, date, shape) VALUES ";
 		list<string> lines = getLines(trackList);
 		std::stringstream values;
 		for (list<string>::iterator it=lines.begin(); it != lines.end(); ++it) {
@@ -215,7 +215,7 @@ bool toPoints(int blockId, TrackList &trackList) {
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
 		session sql(postgresql, GEOSERVER_DB);
-		string insertSql = "INSERT INTO points(block_id, date, shape) VALUES ";
+		string insertSql = "INSERT INTO points" + TABLE_POSTFIX + "(block_id, date, shape) VALUES ";
 		std::stringstream values;
 		for (TrackList::iterator it=trackList.begin(); it != trackList.end(); ++it) {
 			std::stringstream ss;
@@ -253,7 +253,7 @@ string getLastData(int block_id) {
 	cout << "-= getLastData =-" << endl;
 	try{
 		session sql(postgresql, GEOSERVER_DB);
-		string select = "SELECT date FROM last_update WHERE block_id = :blockid";
+		string select = "SELECT date FROM last_update" + TABLE_POSTFIX + " WHERE block_id = :blockid";
 		string date;
 		statement st = (sql.prepare << select, use(block_id, "blockid"), into(date));
 		if( st.execute(true) ) {
@@ -303,8 +303,9 @@ void getTail(int block_id, string date) {
 			cout << "prepareDuration execution-time is: ";
 			showTime(prepareDuration);
 			cout << "Size to insert: " << trackList.size() << " diference: " << (totalRows - trackList.size()) << endl;
-			if(toPoints(block_id, trackList))
+			//if(toPoints(block_id, trackList))
 				if(toCutLines(block_id, trackList, lastWhen))
+				//if(toLines(block_id, trackList, lastWhen))
 					toLastUpdate(block_id, lastWhen);
 
 			high_resolution_clock::time_point endTime = high_resolution_clock::now();
@@ -328,7 +329,7 @@ void getTail(int block_id, string date) {
 
 int main(int argc, char const* argv[]) {
 	int block_id = 187156;
-	block_id = 14930;
+	//block_id = 14930;
 	string date = getLastData(block_id);
 	getTail(block_id, date);
 	return (EXIT_SUCCESS);
