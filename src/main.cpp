@@ -21,9 +21,9 @@ using namespace std::chrono;
 
 static const string SOURCE_DB = "DSN=***;UID=***;PWD=***;database=***";
 static const string GEOSERVER_DB = "dbname=*** user=*** password=*** host=***";
-static const string TOP_LINES = "1000"; // SELECT TOP
+static const string TOP_LINES = "100000"; // SELECT TOP
 static const string SRS = "4326";
-static const string TABLE_POSTFIX = "_200";
+static const string TABLE_POSTFIX = "_1000";
 static const int MAX_POINTS_DIST = 1000; //Максимальное расстояние между точками для отреза линии.
 
 class Point {
@@ -72,11 +72,11 @@ void checkDist(TrackList &trackList) {
 	for (TrackList::iterator it=trackList.begin(); it != trackList.end(); ++it) {
 		if(prev.getBlockId() != 0 ) {
 			double dist = Tools::calcDist(prev.getLat(), prev.getLon(), it->getLat(), it->getLon());
-			if(dist == 0) {
-				cout << "Zero 1" << endl;
-				prev.toString();
-				it->toString();
-				cout << "Zero 2" << endl;
+			if(dist >= MAX_POINTS_DIST) {
+//				cout << "Zero 1" << endl;
+//				prev.toString();
+//				it->toString();
+//				cout << "Zero 2" << endl;
 			}
 			//cout << (int)dist << endl;
 		}
@@ -275,8 +275,7 @@ string getLastData(int block_id) {
 
 void getTail(int block_id, string date) {
 	cout << "-= getTail block_id: " << block_id << " date: " << date << endl;
-	string sqlReq = "SELECT top " + TOP_LINES + " lat, lon, received_date FROM journal_mon_201404142011.mld_message WHERE block_id = :blockid AND received_date > :date ORDER BY received_date";
-
+	string sqlReq = "SELECT top " + TOP_LINES + " lat, lon, received_date, id FROM journal_mon_201502140953.mld_message WHERE block_id = :blockid AND received_date > :date AND lat IS NOT NULL AND lon IS NOT NULLORDER BY received_date";
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
 		session sql(odbc, SOURCE_DB);
@@ -292,7 +291,6 @@ void getTail(int block_id, string date) {
 			auto mssqlDuration = duration_cast<milliseconds>( stopRequestTime - startRequestTime ).count();
 			cout << "MSSQL execution-time is: ";
 			showTime(mssqlDuration);
-
 			high_resolution_clock::time_point startPrepareTime = high_resolution_clock::now();
 			lastWhen = rowData.get<std::string>(2);
 			Point point(block_id, rowData.get<double>(0), rowData.get<double>(1), lastWhen);
@@ -303,15 +301,16 @@ void getTail(int block_id, string date) {
 				lastWhen = rowData.get<std::string>(2);
 				Point point(block_id, rowData.get<double>(0), rowData.get<double>(1), lastWhen);
 				// Если новая координата
-				if(point.getLat() != prevPoint.getLat() && point.getLon() != prevPoint.getLon()){
+				if(point.getLat() != prevPoint.getLat() || point.getLon() != prevPoint.getLon()){
 					double dist = Tools::calcDist(prevPoint.getLat(), prevPoint.getLon(), point.getLat(), point.getLon());
 					// и расстояние меньше допустимого
 					if(dist <= MAX_POINTS_DIST) {
 						// добавляем в список
 						trackList.push_back(point);
+						//Только в этом случае, иначе на следующем шаге будем проверять относительно кривой точки.
+						prevPoint = point;
 					}
 				}
-				prevPoint = point;
 				totalRows++;
 			}
 			high_resolution_clock::time_point stopPrepareTime = high_resolution_clock::now();
@@ -339,13 +338,14 @@ void getTail(int block_id, string date) {
 		//37.61778 55.75583
 		//)', 4326) );
 	} catch (exception& e) {
-		cout << e.what();
+		cout << "getTail exception: " << e.what() << endl;
 	}
 }
 
+
 int main(int argc, char const* argv[]) {
 	int block_id = 187156;
-	//block_id = 14930;
+	block_id = 14930;
 	string date = getLastData(block_id);
 	getTail(block_id, date);
 	return (EXIT_SUCCESS);

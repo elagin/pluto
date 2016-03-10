@@ -1,3 +1,4 @@
 Makefile
 src/main.cpp
 src/tools.h
+sql/create.sql
