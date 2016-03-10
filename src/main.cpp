@@ -64,12 +64,12 @@ public:
 	}
 };
 
-typedef std::list<Point> TrackList;
+typedef list<Point> PointList;
 
-void checkDist(TrackList &trackList) {
+void checkDist(PointList &trackList) {
 	cout << "checkDist" << endl;
 	Point prev;
-	for (TrackList::iterator it=trackList.begin(); it != trackList.end(); ++it) {
+    for (PointList::iterator it=trackList.begin(); it != trackList.end(); ++it) {
 		if(prev.getBlockId() != 0 ) {
 			double dist = Tools::calcDist(prev.getLat(), prev.getLon(), it->getLat(), it->getLon());
 			if(dist >= MAX_POINTS_DIST) {
@@ -107,20 +107,20 @@ bool toLastUpdate(int blockId, string date) {
 			return stInsert.get_affected_rows() > 0;
 		}
 	} catch (exception& e) {
-		cout << "lastUpdate exception: " << e.what();
+        cout << "lastUpdate exception: " << e.what() << endl;
 	}
 	return false;
 }
 
-bool toLines(int blockId, TrackList& trackList, string lastWhen) {
+bool toLines(int blockId, PointList& trackList, string lastWhen) {
 	cout << "-= toLines =-" << endl;
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
 		session sql(postgresql, GEOSERVER_DB);
-		std::stringstream ss;
-		std::stringstream lines;
+        stringstream ss;
+        stringstream lines;
 		ss << "ST_GeomFromText('LINESTRING(";
-		for (TrackList::iterator it=trackList.begin(); it != trackList.end(); ++it) {
+        for (PointList::iterator it=trackList.begin(); it != trackList.end(); ++it) {
 			if(lines.str().length() > 0) //Todo: Optimize me
 				lines << ", ";
 			lines << it->getLon();
@@ -139,17 +139,17 @@ bool toLines(int blockId, TrackList& trackList, string lastWhen) {
 		showTime(duration);
 		return st.get_affected_rows() > 0;
 	} catch (exception& e) {
-		cout << "toLines exception: " << e.what();
+        cout << "toLines exception: " << e.what() << endl;
 	}
 	return false;
 }
 
-list<string> getLines(TrackList& trackList) {
+list<string> getLines(PointList& trackList) {
 	list<string> lines;
 	stringstream line;
 	Point prev;
 	int points = 0;
-	for (TrackList::iterator it=trackList.begin(); it != trackList.end(); ++it) {
+    for (PointList::iterator it=trackList.begin(); it != trackList.end(); ++it) {
 		if(line.str().length() == 0 ) {
 			// первая итерация
 			line << it->getLon();
@@ -184,17 +184,17 @@ list<string> getLines(TrackList& trackList) {
 	return lines;
 }
 
-bool toCutLines(int blockId, TrackList& trackList, string lastWhen) {
+bool toCutLines(int blockId, PointList& trackList, string lastWhen) {
 	cout << "-= toLines =-" << endl;
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
 		session sql(postgresql, GEOSERVER_DB);
 		string sqlLine = "INSERT INTO lines" + TABLE_POSTFIX + "(block_id, date, shape) VALUES ";
 		list<string> lines = getLines(trackList);
-		std::stringstream values;
+        stringstream values;
 		for (list<string>::iterator it=lines.begin(); it != lines.end(); ++it) {
 			//cout << "Line: " << it->c_str() << endl;
-			std::stringstream value;
+            stringstream value;
 			value << "( " << blockId << ", '" << lastWhen << "', " << "ST_GeomFromText('LINESTRING(" << it->c_str() << ")', 4326) )";
 			//cout << "value: " << value.str() << endl;
 			if(values.str().size() > 0)
@@ -210,20 +210,20 @@ bool toCutLines(int blockId, TrackList& trackList, string lastWhen) {
 		showTime(duration);
 		return st.get_affected_rows() > 0;
 	} catch (exception& e) {
-		cout << "toLines exception: " << e.what();
+        cout << "toLines exception: " << e.what() << endl;
 	}
 	return false;
 }
 
-bool toPoints(int blockId, TrackList &trackList) {
+bool toPoints(int blockId, PointList &trackList) {
 	cout << "-= toPoints =-" << endl;
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
 		session sql(postgresql, GEOSERVER_DB);
 		string insertSql = "INSERT INTO points" + TABLE_POSTFIX + "(block_id, date, shape) VALUES ";
-		std::stringstream values;
-		for (TrackList::iterator it=trackList.begin(); it != trackList.end(); ++it) {
-			std::stringstream ss;
+        stringstream values;
+        for (PointList::iterator it=trackList.begin(); it != trackList.end(); ++it) {
+            stringstream ss;
 			ss << "( " << blockId << ", '" << it->getWhen() << "', ";
 			ss << "ST_GeomFromText('POINT(";
 			ss << it->getLon();
@@ -249,7 +249,7 @@ bool toPoints(int blockId, TrackList &trackList) {
 		showTime(duration);
 		return st.get_affected_rows() > 0;
 	} catch (exception& e) {
-		cout << "toPoints exception: " << e.what();
+        cout << "toPoints exception: " << e.what() << endl;
 	}
 	return false;
 }
@@ -273,13 +273,44 @@ string getLastData(int block_id) {
 	return "";
 }
 
+struct LastUpdate{
+    int blockId;
+    string date;
+};
+
+typedef list<LastUpdate> UpdateList;
+
+UpdateList getLastDataList() {
+    cout << "-= getLastData =-" << endl;
+    UpdateList updateList;
+    try{
+        vector<string> dates(100);
+        vector<int> blocks(100);
+        session sql(postgresql, GEOSERVER_DB);
+        string select = "SELECT date, block_id FROM last_update" + TABLE_POSTFIX;
+        vector<indicator> inds(100);
+        sql << select, into(dates, inds), into(blocks);
+        for(int i = 0; i < blocks.size(); i++) {
+            LastUpdate lastUpdate;
+            if(inds[i] != soci::i_null)
+                lastUpdate.date = dates[i];
+            lastUpdate.blockId = blocks[i];
+            updateList.push_back(lastUpdate);
+        }
+    } catch (exception& e) {
+        cout << "getLastData exception: " << e.what() << endl;
+    }
+    return updateList;
+}
+
 void getTail(int block_id, string date) {
 	cout << "-= getTail block_id: " << block_id << " date: " << date << endl;
-	string sqlReq = "SELECT top " + TOP_LINES + " lat, lon, received_date, id FROM journal_mon_201502140953.mld_message WHERE block_id = :blockid AND received_date > :date AND lat IS NOT NULL AND lon IS NOT NULLORDER BY received_date";
+    string sqlReq = "SELECT top " + TOP_LINES + " lat, lon, received_date, id FROM journal_mon_201502140953.mld_message WHERE block_id = :blockid AND received_date > :date AND lat IS NOT NULL AND lon IS NOT NULL ORDER BY received_date";
 	try{
+        cout << sqlReq << endl;
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
 		session sql(odbc, SOURCE_DB);
-		TrackList trackList;
+        PointList trackList;
 		row rowData;
 		string lastWhen = "";
 		high_resolution_clock::time_point startRequestTime = high_resolution_clock::now();
@@ -346,7 +377,10 @@ void getTail(int block_id, string date) {
 int main(int argc, char const* argv[]) {
 	int block_id = 187156;
 	block_id = 14930;
-	string date = getLastData(block_id);
-	getTail(block_id, date);
+    //string date = getLastData(block_id);
+    UpdateList list = getLastDataList();
+    for (UpdateList::iterator it=list.begin(); it != list.end(); ++it) {
+        getTail(it->blockId, it->date);
+    }
 	return (EXIT_SUCCESS);
 }
