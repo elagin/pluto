@@ -6,6 +6,8 @@
 
 using namespace std;
 
+static const char* DATE_TIME_FORMAT = "%F %T";
+
 class Tools
 {
 public:
@@ -13,14 +15,14 @@ public:
 		char buff[20];
 		//time_t now = time(NULL);
 		//strftime(buff, 20, "%Y-%m-%d %H:%M:%S", localtime(&time));
-		strftime(buff, 20, "%F %T", localtime(&time));
+		strftime(buff, 20, DATE_TIME_FORMAT, localtime(&time));
 		string res = buff;
 		return res;
 	}
 
 	static time_t convertTime(string time) {
 		struct tm tm;
-		strptime(time.c_str(), "%F %T", &tm);
+		strptime(time.c_str(), DATE_TIME_FORMAT, &tm);
 		return mktime(&tm);
 	}
 
@@ -54,7 +56,31 @@ public:
 		double  ad = atan2(y, x);
 		double  dist = ad * rad;
 		//cout << llat1 << " " << llong1 << " / " << llat2 << " " << llong2 << " Dist: " << (int)dist << endl;
+		//cout << (int)dist << endl;
 		return dist;
+	}
+
+	static string getPrevDay() {
+		time_t seconds = time(NULL);
+		tm* timeinfo = localtime(&seconds);
+		char buff[20];
+		//strcpy(output," Date:  ");
+		//strcat(output,asctime(timeinfo));
+		//cout << output << endl;
+	//DATE_TIME_FORMAT
+		strftime(buff, 20, DATE_TIME_FORMAT, timeinfo);
+		timeinfo->tm_mday--;
+		timeinfo->tm_hour = 23;
+		timeinfo->tm_min = 59;
+		timeinfo->tm_sec = 59;
+		//strftime(buff, 20, DATE_TIME_FORMAT, localtime(&time));
+		strftime(buff, 20, DATE_TIME_FORMAT, timeinfo);
+		string res = buff;
+//		cout << res << endl;
+		return res;
+//		strcpy(output," Date:  ");
+//		strcat(output,asctime(timeinfo));
+//		cout << output << endl;
 	}
 
 };
