@@ -13,20 +13,24 @@
 #include <soci-postgresql.h>
 #include <soci/odbc/soci-odbc.h>
 
+#include <libconfig.h++>
+
 #include "tools.h"
 
 using namespace std;
 using namespace soci;
 using namespace std::chrono;
+using namespace libconfig;
 
-static const string SOURCE_DB = "DSN=***;UID=***;PWD=***;database=***";
-static const string GEOSERVER_DB = "dbname=*** user=*** password=*** host=***";
 static const string TOP_LINES = "100000"; // SELECT TOP
 static const string SRS = "4326";
 static const string TABLE_POSTFIX = "_test";
 
 static const int MAX_POINTS_DIST = 1000; //Максимальное расстояние между точками для отреза линии.
 static const int RESERVE = 100000;		//Резервирование для вектора
+
+static string source_db;
+static string geoserver_db;
 
 class Point {
 private:
@@ -93,7 +97,7 @@ void showTime(int x) {
 bool toLastUpdate(int blockId, string date) {
 	cout << "-= lastUpdate =-" << endl;
 	try{
-		session sql(postgresql, GEOSERVER_DB);
+        session sql(postgresql, geoserver_db);
 		string update = "UPDATE last_update" + TABLE_POSTFIX + " SET date = :date WHERE block_id = :blockid";
 		statement stUpdate = (sql.prepare << update, use(date, "date"), use(blockId, "blockid"));
 		stUpdate.execute(true);
@@ -118,7 +122,7 @@ bool toLines(int blockId, PointList& trackList, string lastWhen) {
 	}
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
-		session sql(postgresql, GEOSERVER_DB);
+        session sql(postgresql, geoserver_db);
 		stringstream ss;
 		stringstream lines;
 		ss << "ST_GeomFromText('LINESTRING(";
@@ -190,7 +194,7 @@ bool toCutLines(int blockId, PointList& trackList, string lastWhen) {
 	//cout << "-= toLines =-" << endl;
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
-		session sql(postgresql, GEOSERVER_DB);
+        session sql(postgresql, geoserver_db);
 		string sqlLine = "INSERT INTO lines" + TABLE_POSTFIX + "(block_id, date, shape) VALUES ";
 		list<string> lines = getLines(trackList);
 		stringstream values;
@@ -221,7 +225,7 @@ bool toPoints(int blockId, PointList &trackList) {
 	//cout << "-= toPoints =-" << endl;
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
-		session sql(postgresql, GEOSERVER_DB);
+        session sql(postgresql, geoserver_db);
 		string insertSql = "INSERT INTO points" + TABLE_POSTFIX + "(block_id, date, shape) VALUES ";
 		stringstream values;
 		for (PointList::iterator it=trackList.begin(); it != trackList.end(); ++it) {
@@ -259,7 +263,7 @@ bool toPoints(int blockId, PointList &trackList) {
 string getLastData(int block_id) {
 	cout << "-= getLastData =-" << endl;
 	try{
-		session sql(postgresql, GEOSERVER_DB);
+        session sql(postgresql, geoserver_db);
 		string select = "SELECT date FROM last_update" + TABLE_POSTFIX + " WHERE block_id = :blockid";
 		string date;
 		statement st = (sql.prepare << select, use(block_id, "blockid"), into(date));
@@ -290,7 +294,7 @@ UpdateList getLastDataList() {
 		vector<string> dates(totalBlocks);
 		vector<int> blocks(totalBlocks);
 		vector<indicator> inds(totalBlocks);
-		session sql(postgresql, GEOSERVER_DB);
+        session sql(postgresql, geoserver_db);
 		string select = "SELECT date, block_id FROM last_update" + TABLE_POSTFIX;
 		cout << select << endl;
 		sql << select, into(dates, inds), into(blocks);
@@ -319,7 +323,7 @@ void getTail(int block_id, string date) {
 	where << " AND lat IS NOT NULL AND lon IS NOT NULL ORDER BY received_date";
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
-		session sql(odbc, SOURCE_DB);
+        session sql(odbc, source_db);
 		PointList trackList;
 		trackList.reserve(RESERVE);
 		row rowData;
@@ -392,17 +396,45 @@ void currentTime() {
 	printf ( "Current local time and date: %s", asctime (timeinfo) );
 }
 
-int main(int argc, char const* argv[]) {
-	cout << "Work with '" << TABLE_POSTFIX << "'' prefix =========================================" << endl;
-	currentTime();
-	for (int i = 0; i < 3;i++) {
-		UpdateList list = getLastDataList();
-		for (UpdateList::iterator it=list.begin(); it != list.end(); ++it) {
-			getTail(it->blockId, it->date);
-		}
-		cout << "==============================" << endl;
-	}
+bool loadCfg() {
+    const char* configFileName = "pluto.cfg";
+    Config config;
+    try {
+      config.readFile(configFileName);
+    }
+    catch(const FileIOException &fioex) {
+      std::cerr << "I/O error while reading config file: " << configFileName << std::endl;
+      return(EXIT_FAILURE);
+    }
+    catch(const ParseException &pex) {
+      std::cerr << "Parse error at " << pex.getFile() << ":" << pex.getLine()
+                << " - " << pex.getError() << std::endl;
+      return(EXIT_FAILURE);
+    }
 
-	currentTime();
-	return (EXIT_SUCCESS);
+    try {
+        source_db = config.lookup("application.source_db").c_str();
+        geoserver_db = config.lookup("application.geoserver_db").c_str();
+    }
+    catch(const SettingNotFoundException &nfex)
+    {
+      cerr << "Invalid setting in configuration file." << endl;
+      return(EXIT_FAILURE);
+    }
+}
+
+int main(int argc, char const* argv[]) {
+    if(loadCfg()) {
+        cout << "Work with '" << TABLE_POSTFIX << "'' prefix =========================================" << endl;
+        currentTime();
+        for (int i = 0; i < 3;i++) {
+            UpdateList list = getLastDataList();
+            for (UpdateList::iterator it=list.begin(); it != list.end(); ++it) {
+                //getTail(it->blockId, it->date);
+            }
+            cout << "==============================" << endl;
+        }
+        currentTime();
+    }
+    return (EXIT_SUCCESS);
 }
