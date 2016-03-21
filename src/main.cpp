@@ -404,22 +404,22 @@ bool loadCfg() {
 	}
 	catch(const FileIOException &fioex) {
 		std::cerr << "I/O error while reading config file: " << configFileName << std::endl;
-		return(EXIT_FAILURE);
+		return false;
 	}
 	catch(const ParseException &pex) {
-		std::cerr << "Parse error at " << pex.getFile() << ":" << pex.getLine()
-				  << " - " << pex.getError() << std::endl;
-		return(EXIT_FAILURE);
+		std::cerr << "Parse error at " << pex.getFile() << ":" << pex.getLine() << " - " << pex.getError() << std::endl;
+		return false;
 	}
 
 	try {
 		source_db = config.lookup("application.source_db").c_str();
 		geoserver_db = config.lookup("application.geoserver_db").c_str();
+		return true;
 	}
 	catch(const SettingNotFoundException &nfex)
 	{
 		cerr << "Invalid setting in configuration file." << endl;
-		return(EXIT_FAILURE);
+		return false;
 	}
 }
 
@@ -430,7 +430,7 @@ int main(int argc, char const* argv[]) {
 		for (int i = 0; i < 3;i++) {
 			UpdateList list = getLastDataList();
 			for (UpdateList::iterator it=list.begin(); it != list.end(); ++it) {
-				//getTail(it->blockId, it->date);
+				getTail(it->blockId, it->date);
 			}
 			cout << "==============================" << endl;
 		}
