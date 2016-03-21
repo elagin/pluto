@@ -24,7 +24,9 @@ static const string GEOSERVER_DB = "dbname=*** user=*** password=*** host=***";
 static const string TOP_LINES = "100000"; // SELECT TOP
 static const string SRS = "4326";
 static const string TABLE_POSTFIX = "_test";
+
 static const int MAX_POINTS_DIST = 1000; //Максимальное расстояние между точками для отреза линии.
+static const int RESERVE = 100000;		//Резервирование для вектора
 
 class Point {
 private:
@@ -59,7 +61,7 @@ public:
 	}
 };
 
-typedef list<Point> PointList;
+typedef vector<Point> PointList;
 
 void checkDist(PointList &trackList) {
 	cout << "checkDist" << endl;
@@ -108,7 +110,7 @@ bool toLastUpdate(int blockId, string date) {
 }
 
 bool toLines(int blockId, PointList& trackList, string lastWhen) {
-	cout << "-= toLines =-" << endl;
+	//cout << "-= toLines =-" << endl;
 	if(trackList.size() <= 1) {
 		//Для линии требуется хотя бы две точки
 		cout << "Enough points to create a line: " << blockId << endl;
@@ -185,7 +187,7 @@ list<string> getLines(PointList& trackList) {
 }
 
 bool toCutLines(int blockId, PointList& trackList, string lastWhen) {
-	cout << "-= toLines =-" << endl;
+	//cout << "-= toLines =-" << endl;
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
 		session sql(postgresql, GEOSERVER_DB);
@@ -216,7 +218,7 @@ bool toCutLines(int blockId, PointList& trackList, string lastWhen) {
 }
 
 bool toPoints(int blockId, PointList &trackList) {
-	cout << "-= toPoints =-" << endl;
+	//cout << "-= toPoints =-" << endl;
 	try{
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
 		session sql(postgresql, GEOSERVER_DB);
@@ -265,7 +267,7 @@ string getLastData(int block_id) {
 			cout << "getLastData: old date is: " << date << endl;
 			return date;
 		} else {
-			cout << "getLastData: No data for blockid: " << block_id << endl;
+			//cout << "getLastData: No data for blockid: " << block_id << endl;
 		}
 	} catch (exception& e) {
 		cout << "getLastData exception: " << e.what();
@@ -281,14 +283,16 @@ struct LastUpdate{
 typedef list<LastUpdate> UpdateList;
 
 UpdateList getLastDataList() {
+	const int totalBlocks = 1200;
 	cout << "-= getLastData =-" << endl;
 	UpdateList updateList;
 	try{
-		vector<string> dates(10000);
-		vector<int> blocks(10000);
+		vector<string> dates(totalBlocks);
+		vector<int> blocks(totalBlocks);
+		vector<indicator> inds(totalBlocks);
 		session sql(postgresql, GEOSERVER_DB);
 		string select = "SELECT date, block_id FROM last_update" + TABLE_POSTFIX;
-		vector<indicator> inds(100);
+		cout << select << endl;
 		sql << select, into(dates, inds), into(blocks);
 		for(int i = 0; i < blocks.size(); i++) {
 			LastUpdate lastUpdate;
@@ -317,12 +321,13 @@ void getTail(int block_id, string date) {
 		high_resolution_clock::time_point startTime = high_resolution_clock::now();
 		session sql(odbc, SOURCE_DB);
 		PointList trackList;
+		trackList.reserve(RESERVE);
 		row rowData;
 		string lastWhen = "";
 		high_resolution_clock::time_point startRequestTime = high_resolution_clock::now();
 		statement st = (sql.prepare << sqlReq << where.str(), use(block_id, "blockid"), into(rowData));
 		int totalRows = 0;
-		Point prevPoint;
+		//Point prevPoint;
 		if( st.execute(true) ) {
 			high_resolution_clock::time_point stopRequestTime = high_resolution_clock::now();
 			auto mssqlDuration = duration_cast<milliseconds>( stopRequestTime - startRequestTime ).count();
@@ -330,9 +335,10 @@ void getTail(int block_id, string date) {
 			showTime(mssqlDuration);
 			high_resolution_clock::time_point startPrepareTime = high_resolution_clock::now();
 			lastWhen = rowData.get<std::string>(2);
-			Point point(rowData.get<double>(0), rowData.get<double>(1), lastWhen);
-			trackList.push_back(point);
-			prevPoint = point;
+			//Point firstPoint(rowData.get<double>(0), rowData.get<double>(1), lastWhen);
+			Point prevPoint(rowData.get<double>(0), rowData.get<double>(1), lastWhen);
+			//trackList.push_back(firstPoint);
+			//prevPoint = firstPoint;
 			totalRows++;
 			while (st.fetch()){
 				lastWhen = rowData.get<std::string>(2);
@@ -347,14 +353,17 @@ void getTail(int block_id, string date) {
 						//Только в этом случае, иначе на следующем шаге будем проверять относительно кривой точки.
 						prevPoint = point;
 					}
+				} else {
+					prevPoint = point;
 				}
+				//prevPoint = point;
 				totalRows++;
 			}
 			high_resolution_clock::time_point stopPrepareTime = high_resolution_clock::now();
 			auto prepareDuration = duration_cast<milliseconds>( stopPrepareTime - startPrepareTime ).count();
 			cout << "prepareDuration execution-time is: ";
 			showTime(prepareDuration);
-			cout << "Points to insert: " << trackList.size() << " diference: " << (totalRows - trackList.size()) << endl;
+			cout << "BlockID: " << block_id << " points to insert: " << trackList.size() << " diference: " << (totalRows - trackList.size()) << endl;
 			//checkDist(trackList);
 			if(trackList.size() > 0)
 				if(toPoints(block_id, trackList))
@@ -368,23 +377,32 @@ void getTail(int block_id, string date) {
 			showTime(duration);
 			cout << "Next date is: " << lastWhen << endl;
 		} else {
-			cout << "No data for blockid: " << block_id << endl;
+			//cout << "No data for blockid: " << block_id << endl;
 		}
 	} catch (exception& e) {
 		cout << "getTail exception: " << e.what() << endl;
 	}
 }
 
+void currentTime() {
+	time_t rawtime;
+	struct tm* timeinfo;
+	time ( &rawtime );
+	timeinfo = localtime ( &rawtime );
+	printf ( "Current local time and date: %s", asctime (timeinfo) );
+}
 
 int main(int argc, char const* argv[]) {
-	cout << "Work with '" << TABLE_POSTFIX << "'' prefix" << endl;
-	for (int i = 0; i < 5;i++) {
+	cout << "Work with '" << TABLE_POSTFIX << "'' prefix =========================================" << endl;
+	currentTime();
+	for (int i = 0; i < 3;i++) {
 		UpdateList list = getLastDataList();
 		for (UpdateList::iterator it=list.begin(); it != list.end(); ++it) {
 			getTail(it->blockId, it->date);
-
 		}
 		cout << "==============================" << endl;
 	}
+
+	currentTime();
 	return (EXIT_SUCCESS);
 }
