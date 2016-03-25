@@ -15,6 +15,7 @@
 
 #include <libconfig.h++>
 
+#include "point.h"
 #include "tools.h"
 
 using namespace std;
@@ -31,41 +32,6 @@ static const int RESERVE = 100000;		//Резервирование для век
 
 static string source_db;
 static string geoserver_db;
-
-class Point {
-private:
-	double lat = 0;
-	double lon = 0;
-	time_t when;
-
-public:
-	Point() {}
-	Point(double lat, double lon, string when)
-		: lat(lat), lon(lon){
-		this->when = Tools::convertTime(when);
-	}
-
-	double getLat() const {
-		return lat;
-	}
-	double getLon() const {
-		return lon;
-	}
-
-	string getWhen() const {
-		return Tools::convertTime(this->when);
-	}
-
-	bool operator < (const Point &point) const {
-		return (this->lat < point.lat || this->lon < point.lon) && this->when < point.when; //убирает лишние, но оставляет только меньшее время.
-	}
-
-	void toString() const {
-		cout << lat << " " << lon << " " << Tools::convertTime(when) << endl;
-	}
-};
-
-typedef vector<Point> PointList;
 
 void checkDist(PointList &trackList) {
 	cout << "checkDist" << endl;
@@ -369,7 +335,9 @@ void getTail(int block_id, string date) {
 			showTime(prepareDuration);
 			cout << "BlockID: " << block_id << " points to insert: " << trackList.size() << " diference: " << (totalRows - trackList.size()) << endl;
 			//checkDist(trackList);
+			//string gpsName = "out_" + std::to_string(block_id) + ".gpx";
 			if(trackList.size() > 0)
+//				Tools::getGpx(trackList, gpsName);
 				if(toPoints(block_id, trackList))
 				//if(toCutLines(block_id, trackList, lastWhen))
 					if(trackList.size() > 1)
@@ -427,7 +395,7 @@ int main(int argc, char const* argv[]) {
 	if(loadCfg()) {
 		cout << "Work with '" << TABLE_POSTFIX << "'' prefix =========================================" << endl;
 		currentTime();
-		for (int i = 0; i < 3;i++) {
+		for (int i = 0; i < 1;i++) {
 			UpdateList list = getLastDataList();
 			for (UpdateList::iterator it=list.begin(); it != list.end(); ++it) {
 				getTail(it->blockId, it->date);
