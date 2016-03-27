@@ -2,3 +2,8 @@ Makefile
 src/main.cpp
 src/tools.h
 sql/create.sql
+src/point.cpp
+src/point.h
+src/tools.cpp
+scripts/kalman.py
+scripts/matrix.py
