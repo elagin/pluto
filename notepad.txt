@@ -1,0 +1,3 @@
+Трек около Чебоксар
+block_id = 149096
+where << " AND received_date > '2015-03-26 17:14:45' AND received_date < '2015-09-15 17:48:01'";

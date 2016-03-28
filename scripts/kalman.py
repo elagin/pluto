@@ -54,7 +54,7 @@ for i in range(len(positions)):
     lat, sigLat = update(lat, sigLat, latitudes[i], measurement_sig)
     lat, sigLat = predict(lat, sigLat, 0, motion_sig)
     resultLat.append(lat)
-
+    print "%f" % (latitudes[i] - lat)
 
 kalman = [[resultLng[i], resultLat[i]] for i in range(len(positions))]
 

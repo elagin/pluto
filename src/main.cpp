@@ -17,6 +17,7 @@
 
 #include "point.h"
 #include "tools.h"
+#include "kalman.h"
 
 using namespace std;
 using namespace soci;
@@ -296,6 +297,7 @@ void getTail(int block_id, string date) {
 		string lastWhen = "";
 		high_resolution_clock::time_point startRequestTime = high_resolution_clock::now();
 		statement st = (sql.prepare << sqlReq << where.str(), use(block_id, "blockid"), into(rowData));
+		//cout << sqlReq << where.str() << endl;
 		int totalRows = 0;
 		//Point prevPoint;
 		if( st.execute(true) ) {
