@@ -7,3 +7,4 @@ src/point.h
 src/tools.cpp
 scripts/kalman.py
 scripts/matrix.py
+src/kalman.h
