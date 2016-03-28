@@ -26,7 +26,7 @@ using namespace libconfig;
 
 static const string TOP_LINES = "100000"; // SELECT TOP
 static const string SRS = "4326";
-static const string TABLE_POSTFIX = "_test";
+static const string TABLE_POSTFIX = "_nocut";
 
 static const int MAX_POINTS_DIST = 1000; //Максимальное расстояние между точками для отреза линии.
 static const int RESERVE = 100000;		//Резервирование для вектора
@@ -50,15 +50,6 @@ void checkDist(PointList &trackList) {
 		}
 		prev = *it;
 	}
-}
-
-void showTime(int x) {
-	int s = x / 1000;
-	int hour = s / 3600;
-	int min = (s - hour * 3600) / 60;
-	int sec = s - hour * 3600 - min * 60;
-	double msec = x % 1000;
-	printf (" %02d:%02d:%02d.%d (%d)\n", hour, min, sec, (int)msec, x);
 }
 
 bool toLastUpdate(int blockId, string date) {
@@ -109,7 +100,7 @@ bool toLines(int blockId, PointList& trackList, string lastWhen) {
 		high_resolution_clock::time_point endTime = high_resolution_clock::now();
 		auto duration = duration_cast<milliseconds>( endTime - startTime ).count();
 		cout << "toLines execution-time is: ";
-		showTime(duration);
+		Tools::showTime(duration);
 		return st.get_affected_rows() > 0;
 	} catch (exception& e) {
 		cout << "toLines exception: " << e.what() << endl;
@@ -138,14 +129,15 @@ list<string> getLines(PointList& trackList) {
 				line << " ";
 				line << it->getLat();
 				points++;
-			} else {
-				//отрезаем линию
-				//cout << "Points into line is: " << points << endl;
-				if(points > 1)
-					lines.push_back(line.str());
-				line.str("");
-				points = 0;
 			}
+//			else {
+//				//отрезаем линию
+//				//cout << "Points into line is: " << points << endl;
+//				if(points > 1)
+//					lines.push_back(line.str());
+//				line.str("");
+//				points = 0;
+//			}
 		}
 		prev = *it;
 	}
@@ -180,7 +172,7 @@ bool toCutLines(int blockId, PointList& trackList, string lastWhen) {
 		high_resolution_clock::time_point endTime = high_resolution_clock::now();
 		auto duration = duration_cast<milliseconds>( endTime - startTime ).count();
 		cout << "toLines execution-time is: ";
-		showTime(duration);
+		Tools::showTime(duration);
 		return st.get_affected_rows() > 0;
 	} catch (exception& e) {
 		cout << "toLines exception: " << e.what() << endl;
@@ -219,7 +211,7 @@ bool toPoints(int blockId, PointList &trackList) {
 		high_resolution_clock::time_point endTime = high_resolution_clock::now();
 		auto duration = duration_cast<milliseconds>( endTime - startTime ).count();
 		cout << "toPoints execution-time is: ";
-		showTime(duration);
+		Tools::showTime(duration);
 		return st.get_affected_rows() > 0;
 	} catch (exception& e) {
 		cout << "toPoints exception: " << e.what() << endl;
@@ -304,7 +296,7 @@ void getTail(int block_id, string date) {
 			high_resolution_clock::time_point stopRequestTime = high_resolution_clock::now();
 			auto mssqlDuration = duration_cast<milliseconds>( stopRequestTime - startRequestTime ).count();
 			cout << "MSSQL execution-time is: ";
-			showTime(mssqlDuration);
+			Tools::showTime(mssqlDuration);
 			high_resolution_clock::time_point startPrepareTime = high_resolution_clock::now();
 			lastWhen = rowData.get<std::string>(2);
 			//Point firstPoint(rowData.get<double>(0), rowData.get<double>(1), lastWhen);
@@ -317,38 +309,33 @@ void getTail(int block_id, string date) {
 				Point point(rowData.get<double>(0), rowData.get<double>(1), lastWhen);
 				// Если новая координата
 				if(point.getLat() != prevPoint.getLat() || point.getLon() != prevPoint.getLon()){
-					double dist = Tools::calcDist(prevPoint.getLat(), prevPoint.getLon(), point.getLat(), point.getLon());
-					// и расстояние меньше допустимого
-					if(dist <= MAX_POINTS_DIST) {
-						// добавляем в список
-						trackList.push_back(point);
-						//Только в этом случае, иначе на следующем шаге будем проверять относительно кривой точки.
-						prevPoint = point;
-					}
-				} else {
-					prevPoint = point;
+					trackList.push_back(point);
 				}
-				//prevPoint = point;
+				prevPoint = point;
 				totalRows++;
 			}
 			high_resolution_clock::time_point stopPrepareTime = high_resolution_clock::now();
 			auto prepareDuration = duration_cast<milliseconds>( stopPrepareTime - startPrepareTime ).count();
 			cout << "prepareDuration execution-time is: ";
-			showTime(prepareDuration);
+			Tools::showTime(prepareDuration);
 			cout << "BlockID: " << block_id << " points to insert: " << trackList.size() << " diference: " << (totalRows - trackList.size()) << endl;
 			//checkDist(trackList);
 			//string gpsName = "out_" + std::to_string(block_id) + ".gpx";
-			if(trackList.size() > 0)
+			if(trackList.size() > 0) {
+				Kalman kalman;
+				Tools::getGpx(trackList, to_string(block_id));
+				Tools::getGpx(kalman.run(trackList), "kalman-" + to_string(block_id));
 //				Tools::getGpx(trackList, gpsName);
 				if(toPoints(block_id, trackList))
 				//if(toCutLines(block_id, trackList, lastWhen))
 					if(trackList.size() > 1)
 						if(toLines(block_id, trackList, lastWhen))
 							toLastUpdate(block_id, lastWhen);
+			}
 			high_resolution_clock::time_point endTime = high_resolution_clock::now();
 			auto duration = duration_cast<milliseconds>( endTime - startTime ).count();
 			cout << "getTail execution-time is: ";
-			showTime(duration);
+			Tools::showTime(duration);
 			cout << "Next date is: " << lastWhen << endl;
 		} else {
 			//cout << "No data for blockid: " << block_id << endl;

@@ -1,7 +1,12 @@
 #ifndef KALMAN_H
 #define KALMAN_H
 
+#include <ctime>
+#include <chrono>
+
 #include "point.h"
+
+using namespace std::chrono;
 
 class Kalman{
 
@@ -33,6 +38,7 @@ public:
 		: motionSig(motionSig), measurementSig(measurementSig) {}
 
 	PointList run(PointList points) {
+		high_resolution_clock::time_point startRequestTime = high_resolution_clock::now();
 		PointList result;
 		PointList::iterator itBegin=points.begin();
 		Res resLng;
@@ -53,8 +59,12 @@ public:
 			Point resPoint(resultLat, resultLng, it->getWhen());
 			result.push_back(resPoint);
 			cout.precision(6);
-			cout << fixed << it->getLat() - resultLat << endl;
+			//cout << fixed << it->getLat() - resultLat << endl;
 		}
+		high_resolution_clock::time_point stopRequestTime = high_resolution_clock::now();
+		auto mssqlDuration = duration_cast<milliseconds>( stopRequestTime - startRequestTime ).count();
+		cout << "Kalman execution-time is: ";
+		Tools::showTime(mssqlDuration);
 		return result;
 	}
 };

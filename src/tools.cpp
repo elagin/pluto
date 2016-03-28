@@ -2,7 +2,6 @@
 #include <cmath>
 
 #include "tools.h"
-#include "kalman.h"
 
 #define PI 3.14159265
 
@@ -83,7 +82,7 @@ void Tools::getGpx(PointList points, const string fileName) {
 		}
 	}
 	gpx::Writer writer;
-	ofstream stream(fileName);
+	ofstream stream(fileName + ".gpx");
 	if (stream.is_open()) {
 		writer.write(stream, root, false);
 		stream.close();
