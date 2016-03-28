@@ -2,6 +2,7 @@
 #include <cmath>
 
 #include "tools.h"
+#include "kalman.h"
 
 #define PI 3.14159265
 
